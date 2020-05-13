@@ -1,263 +1,582 @@
-#include <cstdio> 
-#include <cstdlib> 
-#include <memory> 
-#include <vector> 
-#include <utility> 
-#include <cstdint> 
-#include <iostream> 
-#include <fstream> 
-#include <cmath> 
+#include <vector>
+#include <iostream>
+#include <fstream>
+#include <cmath>
+#include <string>
+#include <chrono>
 #include "omp.h"
-using namespace std;
 
-//const double M_PI = 3.14;
-const float kInfinity = std::numeric_limits<float>::max(); 
-
-class Vect3 {
+class Vec3f {
     public:
-
-    double X;
-    double Y;
-    double Z;
-
-    Vect3(double x = 0.0, double y = 0.0, double z = 0.0) : X(x), Y(y), Z(z) {}
-
-    Vect3 operator +(const Vect3& vec) const{
-        return Vect3(X+vec.X,Y+vec.Y,Z+vec.Z);
-    }
-
-    Vect3 operator -(const Vect3& vec) const {
-        return Vect3(X-vec.X,Y-vec.Y,Z-vec.Z);
-    }
-
-    void fill(double x, double y, double z) const {
-        Vect3(x,y,z);
-    }
-
-    Vect3 operator *(double scalar) const{
-        return Vect3(scalar*X,scalar*Y,scalar*Z);
-    }
-
-	Vect3 crossProduct(const Vect3& vec) const {
-		return Vect3(vec.Y*Z - vec.Z*Y, vec.Z*X - vec.X*Z, vec.X*Y - vec.Y*X);
-	}
-
-    double dot(const Vect3& vec) const {
-        return X*vec.X+Y*vec.Y+Z*vec.Z;
-    }
-
-    double norm() const {
-        return sqrt(dot(*this));
-    }
-
-    Vect3 normalize() {
-        return (*this)*(1/norm());
-    }
-
-    void print(){
-        cout << X << ", " << Y << ", " << Z << endl;
-    }
-
+    float x, y, z;
+    Vec3f() : x(0), y(0), z(0) {}
+    Vec3f(float xx) : x(xx), y(xx), z(xx) {}
+    Vec3f(float xx, float yy, float zz) : x(xx), y(yy), z(zz) {}
+    Vec3f operator * (const float &r) const { return Vec3f(x * r, y * r, z * r); }
+    Vec3f operator * (const Vec3f &v) const { return Vec3f(x * v.x, y * v.y, z * v.z); }
+    Vec3f operator - (const Vec3f &v) const { return Vec3f(x - v.x, y - v.y, z - v.z); }
+    Vec3f operator + (const Vec3f &v) const { return Vec3f(x + v.x, y + v.y, z + v.z); }
+    Vec3f operator - () const { return Vec3f(-x, -y, -z); }
+    Vec3f& operator += (const Vec3f &v) { x += v.x, y += v.y, z += v.z; return *this; }
+    const float& operator [] (int i) const { return (&x)[i]; }
+    float& operator [] (int i) { return (&x)[i]; }
 };
 
-double clamp(const double &lo, const double &hi, const double &v) { 
-    return max(lo, min(hi, v)); 
-} 
+class Vec2f
+{
+    public:
+    float x, y;
+    Vec2f() : x(0), y(0) {}
+    Vec2f(float xx) : x(xx), y(xx) {}
+    Vec2f(float xx, float yy) : x(xx), y(yy) {}
+    Vec2f operator * (const float &r) const { return Vec2f(x * r, y * r); }
+    Vec2f operator + (const Vec2f &v) const { return Vec2f(x + v.x, y + v.y); }
+};
 
-double deg2rad(const float &deg){ 
-    return deg * M_PI / 180; 
-} 
+Vec3f normalize(const Vec3f &v)
+{
+    float mag2 = v.x * v.x + v.y * v.y + v.z * v.z;
+    if (mag2 > 0) {
+        float invMag = 1 / sqrtf(mag2);
+        return Vec3f(v.x * invMag, v.y * invMag, v.z * invMag);
+    }
+    return v;
+}
 
-typedef struct Options{
+inline
+float dotProduct(const Vec3f &a, const Vec3f &b)
+{ return a.x * b.x + a.y * b.y + a.z * b.z; }
+
+Vec3f crossProduct(const Vec3f &a, const Vec3f &b)
+{
+    return Vec3f(
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x
+    );
+}
+
+class Matrix44
+{
+    public:
+    float x[4][4] = {{1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+
+    Matrix44() {}
+
+    Matrix44 (float a, float b, float c, float d, float e, float f, float g, float h,
+              float i, float j, float k, float l, float m, float n, float o, float p)
+    {
+        x[0][0] = a;
+        x[0][1] = b;
+        x[0][2] = c;
+        x[0][3] = d;
+        x[1][0] = e;
+        x[1][1] = f;
+        x[1][2] = g;
+        x[1][3] = h;
+        x[2][0] = i;
+        x[2][1] = j;
+        x[2][2] = k;
+        x[2][3] = l;
+        x[3][0] = m;
+        x[3][1] = n;
+        x[3][2] = o;
+        x[3][3] = p;
+    }
+    
+    const float* operator [] (int i) const { return x[i]; }
+    float* operator [] (int i) { return x[i]; }
+
+    static void multiply(const Matrix44 &a, const Matrix44& b, Matrix44 &c) //BOOST
+    {
+        #pragma omp parallel for
+        for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 4; ++j) {
+                c[i][j] = a[i][0] * b[0][j] + a[i][1] * b[1][j] +
+                    a[i][2] * b[2][j] + a[i][3] * b[3][j];
+            }
+        }
+    }
+    
+    Matrix44 transposed() const //BOOST
+    {
+        #pragma omp parallel for private(t, x)
+        Matrix44 t;
+        for (int i = 0; i < 4; ++i) {
+            for (int j = 0; j < 4; ++j) {
+                t[i][j] = x[j][i];
+            }
+        }
+        return t;
+    }
+
+    Matrix44& transpose ()
+    {
+        Matrix44 tmp (x[0][0],
+                      x[1][0],
+                      x[2][0],
+                      x[3][0],
+                      x[0][1],
+                      x[1][1],
+                      x[2][1],
+                      x[3][1],
+                      x[0][2],
+                      x[1][2],
+                      x[2][2],
+                      x[3][2],
+                      x[0][3],
+                      x[1][3],
+                      x[2][3],
+                      x[3][3]);
+        *this = tmp;
+        return *this;
+    }
+
+    
+    
+    void multVecMatrix(const Vec3f &src, Vec3f &dst) const
+    {
+        float a, b, c, w;
+        
+        a = src[0] * x[0][0] + src[1] * x[1][0] + src[2] * x[2][0] + x[3][0];
+        b = src[0] * x[0][1] + src[1] * x[1][1] + src[2] * x[2][1] + x[3][1];
+        c = src[0] * x[0][2] + src[1] * x[1][2] + src[2] * x[2][2] + x[3][2];
+        w = src[0] * x[0][3] + src[1] * x[1][3] + src[2] * x[2][3] + x[3][3];
+        
+        dst.x = a / w;
+        dst.y = b / w;
+        dst.z = c / w;
+    }
+    
+    void multDirMatrix(const Vec3f &src, Vec3f &dst) const
+    {
+        float a, b, c;
+        
+        a = src[0] * x[0][0] + src[1] * x[1][0] + src[2] * x[2][0];
+        b = src[0] * x[0][1] + src[1] * x[1][1] + src[2] * x[2][1];
+        c = src[0] * x[0][2] + src[1] * x[1][2] + src[2] * x[2][2];
+        
+        dst.x = a;
+        dst.y = b;
+        dst.z = c;
+    }
+
+    Matrix44 inverse() const //BOOST
+    {
+        int i, j, k;
+        Matrix44 s;
+        Matrix44 t (*this);
+        
+        for (i = 0; i < 3 ; i++) {
+            int pivot = i;
+            
+            float pivotsize = t[i][i];
+            
+            if (pivotsize < 0)
+                pivotsize = -pivotsize;
+                
+                for (j = i + 1; j < 4; j++) {
+                    float tmp = t[j][i];
+                    
+                    if (tmp < 0)
+                        tmp = -tmp;
+                        
+                        if (tmp > pivotsize) {
+                            pivot = j;
+                            pivotsize = tmp;
+                        }
+                }
+            
+            if (pivotsize == 0) {
+                return Matrix44();
+            }
+            
+            if (pivot != i) {
+                for (j = 0; j < 4; j++) {
+                    float tmp;
+                    
+                    tmp = t[i][j];
+                    t[i][j] = t[pivot][j];
+                    t[pivot][j] = tmp;
+                    
+                    tmp = s[i][j];
+                    s[i][j] = s[pivot][j];
+                    s[pivot][j] = tmp;
+                }
+            }
+            
+            for (j = i + 1; j < 4; j++) {
+                float f = t[j][i] / t[i][i];
+                
+                for (k = 0; k < 4; k++) {
+                    t[j][k] -= f * t[i][k];
+                    s[j][k] -= f * s[i][k];
+                }
+            }
+        }
+        
+        for (i = 3; i >= 0; --i) {
+            float f;
+            
+            if ((f = t[i][i]) == 0) {
+                return Matrix44();
+            }
+            
+            for (j = 0; j < 4; j++) {
+                t[i][j] /= f;
+                s[i][j] /= f;
+            }
+            
+            for (j = 0; j < i; j++) {
+                f = t[j][i];
+                
+                #pragma omp parallel for private(t, s)
+                for (k = 0; k < 4; k++) {
+                    t[j][k] -= f * t[i][k];
+                    s[j][k] -= f * s[i][k];
+                }
+            }
+        }
+        return s;
+    }
+
+    const Matrix44& invert()
+    {
+        *this = inverse();
+        return *this;
+    }
+};
+
+inline
+float clamp(const float &lo, const float &hi, const float &v)
+{ return std::max(lo, std::min(hi, v)); }
+
+inline
+float deg2rad(const float &deg)
+{ return deg * M_PI / 180; }
+
+inline
+Vec3f mix(const Vec3f &a, const Vec3f& b, const float &mixValue)
+{ return a * (1 - mixValue) + b * mixValue; }
+
+struct Options // Scene settings 
+{
     int width; 
     int height; 
-    double fov; 
-    double imageAspectRatio; 
-    double maxDepth; 
-    Vect3 backgroundColor;
-    Vect3 cameraPosition;
-}Options;
-
-class Ray {
-    public:
-    Vect3 orig;
-    Vect3 dir;
-    Ray() {}
-    Ray(const Vect3& a, const Vect3& b): orig(a), dir(b) {}
-    Vect3 origin() const { return orig; }
-    Vect3 direction() const { return dir; }
-    Vect3 point_at_parameter(double t) const{ return orig + dir * t; }
+    float fov;
+    Vec3f backgroundColor;
+    double dist_to_screen;
+    Vec3f vup;
+    Vec3f camera;
+    Vec3f normal;
+    Vec3f right;
+    Matrix44 cameraToWorld;
+    float max_dist;
 };
 
-class Sphere{
-    public:
-    double radius;
-    Vect3 center;
-    Sphere(Vect3 cent, double rad){
-        center = cent;
-        radius = rad;
-    }
-    bool intersect(const Vect3 &orig, const Vect3 &dir, double &tnear, int &index, Vect3 &uv) const {
-        double t0, t1;
-        Vect3 L = center - orig; 
-        double tca = L.dot(dir); 
-        if (tca < 0){
-            return false;
-        }
-        double d2 = L.dot(L) - tca * tca; 
-        if (d2 > radius){
-            return false;
-        } 
-        double thc = sqrt(radius - d2); 
-        t0 = tca - thc; // first point
-        t1 = tca + thc; // second point
-        
-        if (t0 > t1){
-            swap(t0, t1); 
-        }
- 
-        if (t0 < 0){ 
-            t0 = t1; // if t0 is negative, let's use t1 instead 
-            if (t0 < 0){
-                return false;
-            }
-        } 
- 
-        return true;
-    }
-};
-
-class Screen {
-    public:
-    Vect3 normal;
-    Vect3 up;
-    double dist;
-    double limit;
-    double angle;
-    double width;
-    double height;
-    Screen(double dist = 0.0, double limit = 0.0, double angle = 0.0, double width = 0.0, double height = 0.0){
-        this->dist = dist;
-        this->limit = limit;
-        this->angle = angle;
-        this->width = width;
-        this->height = height;
-    }
-    void add_normal(Vect3 norm){
-        normal = norm;
-    }
-    void add_up(Vect3 vup){
-        up = vup;
-    }
-};
-
-bool trace( 
-    const Vect3 &orig, const Vect3 &dir, 
-    const vector<Sphere> &objects, 
-    double &t_nearest, int &index, 
-    Vect3 &uv, Sphere hitObject) 
-{ 
-    hitObject = NULL; 
-    for (int k = 0; k < objects.size(); ++k) { 
-        double tNearK = kInfinity; 
-        int indexK; 
-        Vec2f uvK; 
-        if (objects[k].intersect(orig, dir, tNearK, indexK, uvK) && (tNearK < t_nearest)) { 
-            hitObject = objects[k]; 
-            t_nearest = tNearK; 
-            index = indexK; 
-            uv = uvK; 
-        } 
-    } 
- 
-    return (*hitObject != nullptr); 
-} 
-
-Vect3 castRay(
-        const Vect3 &orig, 
-        const Vect3 &dir, 
-        const vector<Sphere> &objects, 
-        const Options &options,
-        bool test = false) 
+typedef struct Line
 {
-    double t_nearest = kInfinity; // distance to the intersected object
-    Sphere *hitObject = nullptr; // pointer to the intersected object 
-    Vect3 hitColor = options.backgroundColor; // the color of the intersected point
+    int I;
+    std::string Name;
+    std::string Data;
+}Line;
 
-    Vect3 uv; //???
-    int index = 0; //???
+class Object // Virtual objects class
+{
+    public:
+    std::string name = "";
+    Object(){}
+    virtual ~Object() {}
+    virtual bool intersect(const Vec3f &, const Vec3f &, float &, int &, Vec2f &) const = 0;
+    virtual Vec3f getMassCenter() const = 0;
+};
 
-    if (trace(orig, dir, objects, t_nearest, index, uv, &hitObject)) { 
-        //Vect3 hitPoint = orig + dir * t_nearest;
-        //Vec2f st; // st coordinates 
-        //hitObject->getSurfaceProperties(hitPoint, dir, index, uv, N, st); 
-        hitColor = Vect3(1, 1, 1);
+bool rayTriangleIntersect(
+    const Vec3f &v0, const Vec3f &v1, const Vec3f &v2,
+    const Vec3f &orig, const Vec3f &dir,
+    float &tnear, float &u, float &v)
+{
+    Vec3f edge1 = v1 - v0;
+    Vec3f edge2 = v2 - v0;
+    Vec3f pvec = crossProduct(dir, edge2);
+    float det = dotProduct(edge1, pvec);
+    if (det == 0 || det < 0) return false;
 
-    } 
- 
-    return hitColor; 
-} 
+    Vec3f tvec = orig - v0;
+    u = dotProduct(tvec, pvec);
+    if (u < 0 || u > det) return false;
 
-void render(const Options &options, const vector<Sphere> &objects) 
-{ 
-    Vect3 *framebuffer = new Vect3[options.width * options.height]; 
-    Vect3 *pix = framebuffer; 
-    double scale = tan(deg2rad(options.fov * 0.5)); 
-    double imageAspectRatio = options.width / (float)options.height; 
-    Vect3 orig = options.cameraPosition; 
+    Vec3f qvec = crossProduct(tvec, edge1);
+    v = dotProduct(dir, qvec);
+    if (v < 0 || u + v > det) return false;
 
-    for (int j = 0; j < options.height; ++j) { 
-        for (int i = 0; i < options.width; ++i) {
-            double x = (2 * (i + 0.5) / (double)options.width - 1) * imageAspectRatio * scale; 
-            double y = (1 - 2 * (j + 0.5) / (double)options.height) * scale; 
-            Vect3 dir = Vect3(x, y, -1).normalize(); 
-            *(pix++) = castRay(orig, dir, objects, options); // returns black or backgroundColor
-        } 
+    float invDet = 1 / det;
+    
+    tnear = dotProduct(edge2, qvec) * invDet;
+    u *= invDet;
+    v *= invDet;
+
+    return true;
+}
+
+class MeshTriangle : public Object
+{
+    public:
+    std::unique_ptr<Vec3f[]> vertices;
+    int numTriangles;
+    std::unique_ptr<int[]> vertexIndex;
+    Vec3f massCenter;
+
+    MeshTriangle(
+        const Vec3f *verts,
+        const int &numTris)
+    {
+        int vertsIndex[12] = {2,1,0,3,2,0,0,1,3,1,2,3}; 
+        Vec2f st[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}}; 
+        int maxIndex = 0;
+        for (int i = 0; i < numTris * 3; ++i)
+            if (vertsIndex[i] > maxIndex) maxIndex = vertsIndex[i];
+        maxIndex += 1;
+        vertices = std::unique_ptr<Vec3f[]>(new Vec3f[maxIndex]);
+        memcpy(vertices.get(), verts, sizeof(Vec3f) * maxIndex);
+        vertexIndex = std::unique_ptr<int[]>(new int[numTris * 3]);
+        memcpy(vertexIndex.get(), vertsIndex, sizeof(int) * numTris * 3);
+        numTriangles = numTris;
+        massCenter[0] = (verts[0][0] + verts[1][0] + verts[2][0] + verts[3][0])/4;
+        massCenter[1] = (verts[0][1] + verts[1][1] + verts[2][1] + verts[3][1])/4;
+        massCenter[2] = (verts[0][2] + verts[1][2] + verts[2][2] + verts[3][2])/4;
     }
- 
-    ofstream ofs; 
-    ofs.open("./render.bmp"); 
-    ofs << "P6\n" << options.width << " " << options.height << "\n255\n"; 
-    for (uint32_t i = 0; i < options.height * options.width; ++i) { 
-        char r = (char)(255 * clamp(0, 1, framebuffer[i].X)); 
-        char g = (char)(255 * clamp(0, 1, framebuffer[i].Y)); 
-        char b = (char)(255 * clamp(0, 1, framebuffer[i].Z)); 
-        ofs << r << g << b; 
-    } 
- 
-    ofs.close(); 
- 
-    delete[] framebuffer; 
-} 
+
+    bool intersect(const Vec3f &orig, const Vec3f &dir, float &tnear, int &index, Vec2f &uv) const  //BOOST
+    {
+        bool intersect = false;
+        #pragma omp parallel for private(vertices, vertexIndex)
+        for (int k = 0; k < numTriangles; ++k) {
+            const Vec3f &v0 = vertices[vertexIndex[k * 3]];
+            const Vec3f &v1 = vertices[vertexIndex[k * 3 + 1]];
+            const Vec3f &v2 = vertices[vertexIndex[k * 3 + 2]];
+            float t, u, v;
+            if (rayTriangleIntersect(v0, v1, v2, orig, dir, t, u, v) && t < tnear) {
+                tnear = t;
+                uv.x = u;
+                uv.y = v;
+                index = k;
+                intersect |= true;
+            }
+        }
+        return intersect;
+    }
+
+    Vec3f getMassCenter() const{
+        return massCenter;
+    }
+};
+
+class Factory
+{
+public:
+	virtual Object* Create(const Vec3f *verts, const int &numTris) = 0;
+	virtual ~Factory() {}
+};
+
+class TriangleMeshFactory : public Factory
+{
+    public:
+	Object* Create(const Vec3f *verts, const int &numTris){
+        return new MeshTriangle(verts, numTris);
+    }
+};
+
+bool trace(
+    const Vec3f &orig, const Vec3f &dir,
+    const std::vector<Object*> &objects,
+    float &tNear, int &index, Vec2f &uv, Object **hitObject, Options options)
+{
+    *hitObject = nullptr;
+    #pragma omp parallel for private(objects) //BOOST
+    for (int k = 0; k < objects.size(); ++k) {
+        float tNearK = options.max_dist;
+        int indexK;
+        Vec2f uvK;
+        if (objects[k]->intersect(orig, dir, tNearK, indexK, uvK) && tNearK < tNear) {
+            *hitObject = objects[k];
+            tNear = tNearK;
+            index = indexK;
+            uv = uvK;
+        }
+    }
+    return (*hitObject != nullptr);
+}
+
+Vec3f castRay(
+    const Vec3f &orig, const Vec3f &dir,
+    const std::vector<Object*> &objects,
+    const Options &options)
+{
+    Vec3f hitColor = options.backgroundColor;
+    float tnear = options.max_dist;
+    Vec2f uv;
+    int index = 0;
+    Object *hitObject = nullptr;
+    if (trace(orig, dir, objects, tnear, index, uv, &hitObject, options)){
+        hitColor = Vec3f(64, 64, 64) + 10*dotProduct(hitObject->getMassCenter(), hitObject->getMassCenter());
+        if (hitColor.x > 191){
+            hitColor = Vec3f(191, 191, 191);
+        }
+    }
+    return hitColor;
+}
+
+//BOOST
+void render(
+    const Options &options,
+    const std::vector<Object*> &objects)
+{
+    Vec3f *framebuffer = new Vec3f[options.width * options.height];
+    Vec3f *pix = framebuffer;
+    float scale = tan(deg2rad(options.fov * 0.5))*options.dist_to_screen;
+    float imageAspectRatio = options.width / (float)options.height;
+    Vec3f orig;
+    options.cameraToWorld.multVecMatrix(Vec3f(0), orig);
+    #pragma opm parallel for private(pix, x, y)
+    for (int j = 0; j < options.height; ++j) {
+        for (int i = 0; i < options.width; ++i) {
+            float x = (2 * (i + 0.5) / (float)options.width - 1) * imageAspectRatio * scale;
+            float y = (1 - 2 * (j + 0.5) / (float)options.height) * scale;
+            Vec3f dir;
+            options.cameraToWorld.multDirMatrix(Vec3f(x, y, -1), dir);
+            normalize(dir);
+            *(pix++) = castRay(orig, dir, objects, options);
+        }
+    }
+
+    std::ofstream ofs;
+    ofs.open("./out.bmp", std::ios::out | std::ios::binary);
+    ofs << "P6\n" << options.width << " " << options.height << "\n255\n";
+    for (int i = 0; i < options.height * options.width; ++i) {
+        char r = (char)(framebuffer[i].x);
+        char g = (char)(framebuffer[i].y);
+        char b = (char)(framebuffer[i].z);
+        ofs << r << g << b;
+    }
+
+    ofs.close();
+    delete[] framebuffer;
+}
+
+Options GetSettingsFrom(std::string FileName){
+
+    Options options;
+
+    std::ifstream in(FileName);
+    if (!in)
+	{
+		std::cout << "Settings file doesn't exist" << std::endl;
+		return options;
+	}
+
+    options.camera = Vec3f(0, 0, 6);
+    Vec3f target(0, 0, 0);
+    options.vup = normalize(Vec3f(0, 1, 0));
+    options.dist_to_screen = 1;
+    options.max_dist = 50;
+    options.fov = 60;
+    options.width = 1280;
+    options.height = 960;
+
+    options.backgroundColor = Vec3f(255, 255, 255);
+    options.normal = normalize((options.camera - target));
+    options.right = normalize(crossProduct(options.normal, options.vup));
+    options.vup = normalize(crossProduct(options.right,options.normal));
+    options.cameraToWorld = Matrix44(options.right[0], options.right[1], options.right[2], 0,
+                                     options.vup[0], options.vup[1], options.vup[2], 0, 
+                                     options.normal[0], options.normal[1], options.normal[2], 0, 
+                                     options.camera[0], options.camera[1], options.camera[2], 1); 
+    return options;
+}
+
+std::vector<Object*> GetFiguresFrom(std::string FileName){
+
+    std::vector<Object*> objects;
+    std::ifstream in(FileName);
+    //in.open(R"(полный путь к файлу)");
+    if (!in)
+	{
+		std::cout << "Figures file doesn't exist" << std::endl;
+		return objects;
+	}
+
+    //Line line;
+    int p = 0;
+    std::string stroka;
+
+    while(getline(in,stroka))
+    {
+          if(stroka.substr(0, 5) != "tetra"){
+              std::cout << "Wrong figure name" << std::endl;
+              continue;
+          }
+          
+          for (int i = 2; i < stroka.length(); i++)
+          {
+            if (stroka[i] == ' ')
+            {
+                p = i + 1;
+                break;
+            }
+            line.Name += stroka[i];
+          }
+          
+          for (int i = p; i < stroka.length(); i++)
+          {
+            line.Data += stroka[i];
+          }
+          
+          if (line.I == 0)
+          {
+            v.push_back(CString0_factory->createString(line));
+          }
+          else if (line.I == 1)
+          {
+            v.push_back(CString1_factory->createString(line));
+          }
+          
+          p = 0;
+          line.Data = "";
+          line.Name = "";
+    }
+
+
+    Vec3f verts0[4] = {{0,0,-3}, {1, 0,-3}, {0,1,-3}, {0,0,-2}};
+    Vec3f verts1[4] = {{-1,0,-9}, {-1,0,-9}, {-1,3,-9}, {-2, 0, -8}};
+    Vec3f verts2[4] = {{1,0,1}, {1,0,2}, {1,-3,1}, {2, 0, 1}};
+
+    TriangleMeshFactory* TriangleMesh_Factory = new TriangleMeshFactory;
+    objects.push_back((TriangleMesh_Factory->Create(verts0, 4)));
+    objects.push_back((TriangleMesh_Factory->Create(verts1, 4)));
+    objects.push_back((TriangleMesh_Factory->Create(verts2, 4)));
+
+    in.close();
+    return objects;
+}
 
 int main()
 {
+    auto start = std::chrono::system_clock::now();
 
-    Screen scr(1.0, 20.0, 30.0, 640, 480); //dist to screen, distance of view, vertical camera angle, screen params
-    scr.add_normal(Vect3(1.0, 0.0, 0.0)); //towards object
-    scr.add_up(Vect3(0.0, 0.0, 1.0)); // up direction
+    Options options = GetSettingsFrom("settings.txt");
 
-    vector<Sphere> objects; 
+    std::vector<Object*> objects = GetFiguresFrom("figures.txt");
 
-    Sphere sph1(Vect3(5.0, 0.0, 0.0), 1.0);
+    render(options, objects);
 
-    objects.push_back(sph1);
+    for (int i = 0; i < objects.size(); i++){
+        delete objects[i];
+    }
 
-    // Mesh Triangle creation:::
-    // Vec3f verts[4] = {{-5,-3,-6}, {5,-3,-6}, {5,-3,-16}, {-5,-3,-16}}; 
-    // uint32_t vertIndex[6] = {0, 1, 3, 1, 2, 3}; 
-    // Vec2f st[4] = {{0, 0}, {1, 0}, {1, 1}, {0, 1}}; 
-    // MeshTriangle *mesh = new MeshTriangle(verts, vertIndex, 2, st); 
-
-    Options options; 
-    options.width = 640; 
-    options.height = 480; 
-    options.fov = 60; 
-    options.backgroundColor = Vect3(255, 255, 255); 
-    options.maxDepth = 20;
-    options.cameraPosition = Vect3(0.0, 0.0, 0.0);
-
-    //render(options, objects); 
+    auto end = std::chrono::system_clock::now(); 
+    int elapsed_ms = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()); 
+    std::cout << "Program runtime is " << elapsed_ms << " ms\n";
 
     return 0;
 }
