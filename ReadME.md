@@ -1,3 +1,6 @@
+## Условие задачи
+    Ray tracing: perspective projection, arbitrary number of tetrahedrons, shades of gray, lighting does not count
+## Примечания
 1)
     Для того, чтобы продемонстрировать работоспособность программы, я добавил три Автотеста.
 Изначально на сцене отрисовываются три тетраэдра разных размеров и разных местоположений. 
