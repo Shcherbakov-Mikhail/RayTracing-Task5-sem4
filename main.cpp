@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 #include <chrono>
+#include <sstream>
 #include "omp.h"
 
 class Vec3f {
@@ -259,7 +260,7 @@ inline
 Vec3f mix(const Vec3f &a, const Vec3f& b, const float &mixValue)
 { return a * (1 - mixValue) + b * mixValue; }
 
-struct Options // Scene settings 
+struct Options
 {
     int width; 
     int height; 
@@ -272,16 +273,11 @@ struct Options // Scene settings
     Vec3f right;
     Matrix44 cameraToWorld;
     float max_dist;
+    Vec3f target;
+    std::string output_file;
 };
 
-typedef struct Line
-{
-    int I;
-    std::string Name;
-    std::string Data;
-}Line;
-
-class Object // Virtual objects class
+class Object
 {
     public:
     std::string name = "";
@@ -427,7 +423,6 @@ Vec3f castRay(
     return hitColor;
 }
 
-//BOOST
 void render(
     const Options &options,
     const std::vector<Object*> &objects)
@@ -451,7 +446,7 @@ void render(
     }
 
     std::ofstream ofs;
-    ofs.open("./out.bmp", std::ios::out | std::ios::binary);
+    ofs.open(options.output_file, std::ios::out | std::ios::binary);
     ofs << "P6\n" << options.width << " " << options.height << "\n255\n";
     for (int i = 0; i < options.height * options.width; ++i) {
         char r = (char)(framebuffer[i].x);
@@ -464,38 +459,75 @@ void render(
     delete[] framebuffer;
 }
 
-Options GetSettingsFrom(std::string FileName){
+Options GetSettings(std::string FileIn, std::string FileOut){
 
     Options options;
 
-    std::ifstream in(FileName);
+    std::ifstream in(FileIn);
     if (!in)
 	{
 		std::cout << "Settings file doesn't exist" << std::endl;
 		return options;
 	}
 
-    options.camera = Vec3f(0, 0, 6);
-    Vec3f target(0, 0, 0);
-    options.vup = normalize(Vec3f(0, 1, 0));
-    options.dist_to_screen = 1;
-    options.max_dist = 50;
-    options.fov = 60;
-    options.width = 1280;
-    options.height = 960;
+    for(std::string line; std::getline(in, line); )
+    {
+        std::istringstream in(line);
+        std::string option;
+        double x, y, z, val;
+        in >> option;
 
+        if(option == "cam") {
+            in >> x >> y >> z;
+            options.camera = Vec3f(x, y, z);
+        }
+        else if(option == "target") {
+            in >> x >> y >> z;
+            options.target = Vec3f(x, y, z);
+        }
+        else if(option == "up") {
+            in >> x >> y >> z;
+            options.vup = normalize(Vec3f(x, y, z));
+        }
+        else if(option == "distance") {
+            in >> val;
+            options.dist_to_screen = val;
+        }
+        else if(option == "limit") {
+            in >> val;
+            options.max_dist = val;
+        }
+        else if(option == "alpha") {
+            in >> val;
+            options.fov = val;
+        }
+        else if(option == "width") {
+            in >> val;
+            options.width = val;
+        }
+        else if(option == "height") {
+            in >> val;
+            options.height = val;
+        }
+        else{
+            std::cout << "Smth wrong in 'settings.txt'" << std::endl;
+        }
+    }
+
+    options.output_file = FileOut;
     options.backgroundColor = Vec3f(255, 255, 255);
-    options.normal = normalize((options.camera - target));
+    options.normal = normalize((options.camera - options.target));
     options.right = normalize(crossProduct(options.normal, options.vup));
     options.vup = normalize(crossProduct(options.right,options.normal));
     options.cameraToWorld = Matrix44(options.right[0], options.right[1], options.right[2], 0,
                                      options.vup[0], options.vup[1], options.vup[2], 0, 
                                      options.normal[0], options.normal[1], options.normal[2], 0, 
                                      options.camera[0], options.camera[1], options.camera[2], 1); 
+    in.close();
     return options;
 }
 
-std::vector<Object*> GetFiguresFrom(std::string FileName){
+std::vector<Object*> GetFigures(std::string FileName){
 
     std::vector<Object*> objects;
     std::ifstream in(FileName);
@@ -506,73 +538,82 @@ std::vector<Object*> GetFiguresFrom(std::string FileName){
 		return objects;
 	}
 
-    //Line line;
-    int p = 0;
-    std::string stroka;
-
-    while(getline(in,stroka))
-    {
-          if(stroka.substr(0, 5) != "tetra"){
-              std::cout << "Wrong figure name" << std::endl;
-              continue;
-          }
-          
-          for (int i = 2; i < stroka.length(); i++)
-          {
-            if (stroka[i] == ' ')
-            {
-                p = i + 1;
-                break;
-            }
-            line.Name += stroka[i];
-          }
-          
-          for (int i = p; i < stroka.length(); i++)
-          {
-            line.Data += stroka[i];
-          }
-          
-          if (line.I == 0)
-          {
-            v.push_back(CString0_factory->createString(line));
-          }
-          else if (line.I == 1)
-          {
-            v.push_back(CString1_factory->createString(line));
-          }
-          
-          p = 0;
-          line.Data = "";
-          line.Name = "";
-    }
-
-
-    Vec3f verts0[4] = {{0,0,-3}, {1, 0,-3}, {0,1,-3}, {0,0,-2}};
-    Vec3f verts1[4] = {{-1,0,-9}, {-1,0,-9}, {-1,3,-9}, {-2, 0, -8}};
-    Vec3f verts2[4] = {{1,0,1}, {1,0,2}, {1,-3,1}, {2, 0, 1}};
-
     TriangleMeshFactory* TriangleMesh_Factory = new TriangleMeshFactory;
-    objects.push_back((TriangleMesh_Factory->Create(verts0, 4)));
-    objects.push_back((TriangleMesh_Factory->Create(verts1, 4)));
-    objects.push_back((TriangleMesh_Factory->Create(verts2, 4)));
+    float tmp[12];
+
+    for(std::string line; std::getline(in, line); )
+    {
+        std::istringstream in(line);
+        std::string type;
+        in >> type;
+
+        if(type == "tetra") {
+            in >> tmp[0] >> tmp[1] >> tmp[2] >> 
+            tmp[3] >> tmp[4] >> tmp[5] >> tmp[6] >> 
+            tmp[7] >> tmp[8] >> tmp[9] >> tmp[10] 
+            >> tmp[11];
+            Vec3f verts[4] = {{tmp[0],tmp[1],tmp[2]}, {tmp[3], tmp[4],tmp[5]}, {tmp[6],tmp[7],tmp[8]}, {tmp[9],tmp[10],tmp[11]}};
+            objects.push_back((TriangleMesh_Factory->Create(verts, 4)));
+        }
+        else{
+            std::cout << "Wrong info in 'figures.txt'" << std::endl;
+		    return objects;
+        }
+    }
 
     in.close();
     return objects;
 }
 
-int main()
-{
-    auto start = std::chrono::system_clock::now();
+void autotest1(){ // Front view
 
-    Options options = GetSettingsFrom("settings.txt");
-
-    std::vector<Object*> objects = GetFiguresFrom("figures.txt");
+    Options options = GetSettings("settings1.txt", "front.bmp");
+    std::vector<Object*> objects = GetFigures("figures.txt");
 
     render(options, objects);
 
     for (int i = 0; i < objects.size(); i++){
         delete objects[i];
     }
+    
+    std::cout << "Test1: OK (Front view)" << std::endl;
+}
+
+void autotest2(){ // Side view
+
+    Options options = GetSettings("settings2.txt", "side.bmp");
+    std::vector<Object*> objects = GetFigures("figures.txt");
+
+    render(options, objects);
+
+    for (int i = 0; i < objects.size(); i++){
+        delete objects[i];
+    }
+
+    std::cout << "Test2: OK (Side view)" << std::endl;
+}
+
+void autotest3(){ // Back view
+
+    Options options = GetSettings("settings3.txt", "back.bmp");
+    std::vector<Object*> objects = GetFigures("figures.txt");
+
+    render(options, objects);
+
+    for (int i = 0; i < objects.size(); i++){
+        delete objects[i];
+    }
+
+    std::cout << "Test3: OK (Back view)" << std::endl;
+}
+
+int main()
+{
+    auto start = std::chrono::system_clock::now();
+
+    autotest1();
+    autotest2();
+    autotest3();
 
     auto end = std::chrono::system_clock::now(); 
     int elapsed_ms = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()); 
