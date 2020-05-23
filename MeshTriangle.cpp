@@ -23,7 +23,6 @@ MeshTriangle::MeshTriangle(const Vec3f *verts, const int &numTris)
 bool MeshTriangle::intersect(const Vec3f &orig, const Vec3f &dir, float &tnear, int &index, Vec2f &uv) const  //BOOST
     {
         bool intersect = false;
-        //#pragma omp parallel for
         for (int k = 0; k < numTriangles; ++k) {
             const Vec3f &v0 = vertices[vertexIndex[k * 3]];
             const Vec3f &v1 = vertices[vertexIndex[k * 3 + 1]];

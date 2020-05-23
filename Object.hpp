@@ -12,6 +12,18 @@
 #include "Vec2f.hpp"
 #include "Vec3f.hpp"
 #include "Matrix44.hpp"
+#include <map>
+
+class Object
+{
+    public:
+    int pos;
+    std::string name = "";
+    Object();
+    virtual ~Object();
+    virtual bool intersect(const Vec3f &, const Vec3f &, float &, int &, Vec2f &) const = 0;
+    virtual Vec3f getMassCenter() const = 0;
+};
 
 struct Options
 {
@@ -28,14 +40,6 @@ struct Options
     float max_dist;
     Vec3f target;
     std::string output_file;
-};
-
-class Object
-{
-    public:
-    std::string name = "";
-    Object();
-    virtual ~Object();
-    virtual bool intersect(const Vec3f &, const Vec3f &, float &, int &, Vec2f &) const = 0;
-    virtual Vec3f getMassCenter() const = 0;
+    int num_objects;
+    std::map <float, Object*> distances;
 };

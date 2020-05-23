@@ -1,7 +1,7 @@
 #include "Object.hpp"
 #include "Factory.hpp"
 #include "TriangleMeshFactory.hpp"
-#include "Functions.hpp"
+#include "functions.hpp"
 
 Vec3f normalize(const Vec3f &v)
 {
@@ -82,9 +82,11 @@ Vec3f castRay(
     int index = 0;
     Object *hitObject = nullptr;
     if (trace(orig, dir, objects, tnear, index, uv, &hitObject, options)){
-        hitColor = Vec3f(64, 64, 64) + 10*dotProduct(hitObject->getMassCenter(), hitObject->getMassCenter());
-        if (hitColor.x > 191){
-            hitColor = Vec3f(191, 191, 191);
+        if (options.num_objects == 1){
+            hitColor = Vec3f(64, 64, 64);
+        }
+        else{
+            hitColor = Vec3f(64, 64, 64) + Vec3f(static_cast<int>(127/(options.num_objects-1))) * (hitObject->pos-1);
         }
     }
     return hitColor;
@@ -116,7 +118,6 @@ void render(
         }
     }
     img.save(options.output_file.c_str());
-    //img.display();
 }
 
 Options GetSettings(std::string FileIn, std::string FileOut){
@@ -187,19 +188,20 @@ Options GetSettings(std::string FileIn, std::string FileOut){
     return options;
 }
 
-std::vector<Object*> GetFigures(std::string FileName){
+std::vector<Object*> GetFigures(std::string FileName, Options &options){
 
     std::vector<Object*> objects;
     std::ifstream in(FileName);
     //in.open(R"(полный путь к файлу)");
     if (!in)
 	{
-		std::cout << "Figures file doesn't exist" << std::endl;
+		std::cout << "Figures file doesn't exist, helloxs" << std::endl;
 		return objects;
 	}
 
     TriangleMeshFactory* TriangleMesh_Factory = new TriangleMeshFactory;
     float tmp[12];
+    options.num_objects = 0;
 
     for(std::string line; std::getline(in, line); )
     {
@@ -208,17 +210,38 @@ std::vector<Object*> GetFigures(std::string FileName){
         in >> type;
 
         if(type == "tetra") {
+            options.num_objects++;
             in >> tmp[0] >> tmp[1] >> tmp[2] >> 
             tmp[3] >> tmp[4] >> tmp[5] >> tmp[6] >> 
             tmp[7] >> tmp[8] >> tmp[9] >> tmp[10] 
             >> tmp[11];
             Vec3f verts[4] = {{tmp[0],tmp[1],tmp[2]}, {tmp[3], tmp[4],tmp[5]}, {tmp[6],tmp[7],tmp[8]}, {tmp[9],tmp[10],tmp[11]}};
             objects.push_back((TriangleMesh_Factory->Create(verts, 4)));
+            float dist = dotProduct(objects.back()->getMassCenter(), objects.back()->getMassCenter());
+            options.distances.insert(std::make_pair(dist, objects.back()));
         }
         else{
             std::cout << "Wrong info in 'figures.txt'" << std::endl;
 		    return objects;
         }
+    }
+
+    std::map<int, Object*> tmp1;
+    std::map<Object*, int> poss;
+    int i = 1;
+    for(std::map<float, Object*>::const_iterator it = options.distances.begin();
+    it != options.distances.end(); ++it){
+        tmp1.insert(std::make_pair(i, it->second));
+        i++;
+    }
+
+    for(std::map<int, Object*>::const_iterator it = tmp1.begin();
+    it != tmp1.end(); ++it){
+        poss.insert(std::make_pair(it->second, it->first));
+    }
+
+    for (std::vector<Object*>::iterator it = objects.begin() ; it != objects.end(); ++it){
+        (*it)->pos = poss.find(*it)->second;
     }
 
     in.close();
@@ -227,8 +250,8 @@ std::vector<Object*> GetFigures(std::string FileName){
 
 void autotest1(){ // Front view
 
-    Options options = GetSettings("settings1.txt", "front.bmp");
-    std::vector<Object*> objects = GetFigures("figures.txt");
+    Options options = GetSettings("/Users/Misha/Task5-sem4/settings1.txt", "front.bmp");
+    std::vector<Object*> objects = GetFigures("/Users/Misha/Task5-sem4/figures.txt", options);
     if (objects.size() == 0){
         return;
     }
@@ -243,8 +266,8 @@ void autotest1(){ // Front view
 
 void autotest2(){ // Side view
 
-    Options options = GetSettings("settings2.txt", "side.bmp");
-    std::vector<Object*> objects = GetFigures("figures.txt");
+    Options options = GetSettings("/Users/Misha/Task5-sem4/settings2.txt", "side.bmp");
+    std::vector<Object*> objects = GetFigures("/Users/Misha/Task5-sem4/figures.txt", options);
     if (objects.size() == 0){
         return;
     }
@@ -259,8 +282,8 @@ void autotest2(){ // Side view
 
 void autotest3(){ // Back view
 
-    Options options = GetSettings("settings3.txt", "back.bmp");
-    std::vector<Object*> objects = GetFigures("figures.txt");
+    Options options = GetSettings("/Users/Misha/Task5-sem4/settings3.txt", "back.bmp");
+    std::vector<Object*> objects = GetFigures("/Users/Misha/Task5-sem4/figures.txt", options);
     if (objects.size() == 0){
         return;
     }

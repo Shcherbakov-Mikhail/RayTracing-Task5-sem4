@@ -9,6 +9,7 @@
 #include <sstream>
 #include "omp.h"
 #include <algorithm>
+#include <map>
 
 Vec3f normalize(const Vec3f &v);
 
@@ -40,7 +41,7 @@ void render(const Options &options, const std::vector<Object*> &objects);
 
 Options GetSettings(std::string FileIn, std::string FileOut);
 
-std::vector<Object*> GetFigures(std::string FileName);
+std::vector<Object*> GetFigures(std::string FileName, Options &options);
 
 void autotest1();
 
