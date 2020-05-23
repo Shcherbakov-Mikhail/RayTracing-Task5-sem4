@@ -82,12 +82,7 @@ Vec3f castRay(
     int index = 0;
     Object *hitObject = nullptr;
     if (trace(orig, dir, objects, tnear, index, uv, &hitObject, options)){
-        if (options.num_objects == 1){
-            hitColor = Vec3f(64, 64, 64);
-        }
-        else{
-            hitColor = Vec3f(64, 64, 64) + Vec3f(static_cast<int>(127/(options.num_objects-1))) * (hitObject->pos-1);
-        }
+        hitColor = Vec3f(64, 64, 64) + Vec3f(static_cast<int>(127/(options.num_objects-1))) * (hitObject->pos-1);
     }
     return hitColor;
 }
