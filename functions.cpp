@@ -195,7 +195,7 @@ std::vector<Object*> GetFigures(std::string FileName, Options &options){
     //in.open(R"(полный путь к файлу)");
     if (!in)
 	{
-		std::cout << "Figures file doesn't exist, helloxs" << std::endl;
+		std::cout << "Figures file doesn't exist!" << std::endl;
 		return objects;
 	}
 
@@ -250,8 +250,8 @@ std::vector<Object*> GetFigures(std::string FileName, Options &options){
 
 void autotest1(){ // Front view
 
-    Options options = GetSettings("/Users/Misha/Task5-sem4/settings1.txt", "front.bmp");
-    std::vector<Object*> objects = GetFigures("/Users/Misha/Task5-sem4/figures.txt", options);
+    Options options = GetSettings("settings1.txt", "front.bmp");
+    std::vector<Object*> objects = GetFigures("figures.txt", options);
     if (objects.size() == 0){
         return;
     }
@@ -266,8 +266,8 @@ void autotest1(){ // Front view
 
 void autotest2(){ // Side view
 
-    Options options = GetSettings("/Users/Misha/Task5-sem4/settings2.txt", "side.bmp");
-    std::vector<Object*> objects = GetFigures("/Users/Misha/Task5-sem4/figures.txt", options);
+    Options options = GetSettings("settings2.txt", "side.bmp");
+    std::vector<Object*> objects = GetFigures("figures.txt", options);
     if (objects.size() == 0){
         return;
     }
@@ -282,8 +282,8 @@ void autotest2(){ // Side view
 
 void autotest3(){ // Back view
 
-    Options options = GetSettings("/Users/Misha/Task5-sem4/settings3.txt", "back.bmp");
-    std::vector<Object*> objects = GetFigures("/Users/Misha/Task5-sem4/figures.txt", options);
+    Options options = GetSettings("settings3.txt", "back.bmp");
+    std::vector<Object*> objects = GetFigures("figures.txt", options);
     if (objects.size() == 0){
         return;
     }
